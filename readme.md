@@ -28,7 +28,7 @@ This project implements a Kidney Hospital Management System using Node.js with E
 1. Clone the repository:
 `https://github.com/iamsoumikhazra/kidney-backend.git`
 
-2.`cd kidney-hospital-management-system`
+2. `cd kidney-hospital-management-system`
 
 3. Install dependencies: `npm install`
 

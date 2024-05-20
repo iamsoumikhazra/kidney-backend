@@ -1,9 +1,20 @@
 const express = require("express");
 const fs = require("fs/promises");
+const { z } = require("zod");
 const app = express();
 const port = 8000;
 
 app.use(express.json());
+
+// Middleware for validating request body using Zod
+const validateRequest = (schema) => (req, res, next) => {
+  try {
+    schema.parse(req.body);
+    next();
+  } catch (e) {
+    res.status(400).send(e.errors);
+  }
+};
 
 const readJsonFile = async (filePath) => {
   try {
@@ -22,16 +33,37 @@ const writeJsonFile = async (filePath, data) => {
   }
 };
 
-const getNoOfKidneys = (kidney) => {
-  const { NoOfHealthyKidney, NoOfUnhealthyKidney } = kidney[0];
-  return NoOfHealthyKidney + NoOfUnhealthyKidney;
-};
 
 const validateKidneys = (kidney) => {
   const { NoOfHealthyKidney, NoOfUnhealthyKidney } = kidney[0];
   const totalKidneys = NoOfHealthyKidney + NoOfUnhealthyKidney;
   return totalKidneys >= 1 && totalKidneys <= 2 && NoOfHealthyKidney >= 0 && NoOfUnhealthyKidney >= 0;
 };
+
+// Adding Zod Schemas
+const patientSchema = z.object({
+  name: z.string().min(1),
+  kidney: z.array(z.object({
+    NoOfHealthyKidney: z.number().nonnegative(),
+    NoOfUnhealthyKidney: z.number().nonnegative()
+  })).length(1)
+});
+
+const checkupSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().optional(),
+  kidney: z.array(z.object({
+    NoOfHealthyKidney: z.number().nonnegative(),
+    NoOfUnhealthyKidney: z.number().nonnegative()
+  })).length(1)
+});
+
+const idOrNameSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().optional()
+}).refine(data => data.id || data.name, {
+  message: "Patient ID or name is required"
+});
 
 app.get("/", async (req, res) => {
   try {
@@ -60,12 +92,10 @@ app.get("/", async (req, res) => {
   }
 });
 
-app.post("/", async (req, res) => {
+app.post("/", validateRequest(patientSchema), async (req, res) => {
   try {
     const newPatient = req.body;
-    if (!newPatient.name) {
-      return res.status(400).send("Patient name is required");
-    }
+
     if (!validateKidneys(newPatient.kidney)) {
       return res.status(400).send("A patient must have 1 or 2 kidneys, and kidney counts cannot be negative");
     }
@@ -85,12 +115,10 @@ app.post("/", async (req, res) => {
   }
 });
 
-app.post("/checkup", async (req, res) => {
+app.post("/checkup", validateRequest(checkupSchema), async (req, res) => {
   try {
     const { id, name, kidney } = req.body;
-    if (!id && !name) {
-      return res.status(400).send("Patient ID or name is required");
-    }
+
     if (!kidney) {
       return res.status(400).send("Kidney data is required");
     }
@@ -121,12 +149,9 @@ app.post("/checkup", async (req, res) => {
   }
 });
 
-app.put("/replace", async (req, res) => {
+app.put("/replace", validateRequest(idOrNameSchema), async (req, res) => {
   try {
     const { id, name } = req.body;
-    if (!id && !name) {
-      return res.status(400).send("Patient ID or name is required");
-    }
 
     const data = await readJsonFile("./patient.json");
 
@@ -160,12 +185,9 @@ app.put("/replace", async (req, res) => {
   }
 });
 
-app.delete("/donate", async (req, res) => {
+app.delete("/donate", validateRequest(idOrNameSchema), async (req, res) => {
   try {
     const { id, name } = req.body;
-    if (!id && !name) {
-      return res.status(400).send("Patient ID or name is required");
-    }
 
     const data = await readJsonFile("./patient.json");
 

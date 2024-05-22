@@ -3,8 +3,16 @@ const fs = require("fs/promises");
 const { z } = require("zod");
 const app = express();
 const port = 8000;
+const jwt = require("jsonwebtoken");
+const secret = "mysecret";
 
 app.use(express.json());
+
+async function doctorExists(name, password) {
+  const data = await readJsonFile("./doctors.json");
+  const doctor = data.doctor.some((d) => d.name === name && d.password === password);
+  return doctor;
+}
 
 // Middleware for validating request body using Zod
 const validateRequest = (schema) => (req, res, next) => {
@@ -32,7 +40,6 @@ const writeJsonFile = async (filePath, data) => {
     throw new Error(`Error writing file: ${filePath} - ${error.message}`);
   }
 };
-
 
 const validateKidneys = (kidney) => {
   const { NoOfHealthyKidney, NoOfUnhealthyKidney } = kidney[0];
@@ -63,6 +70,11 @@ const idOrNameSchema = z.object({
   name: z.string().optional()
 }).refine(data => data.id || data.name, {
   message: "Patient ID or name is required"
+});
+
+const doctorSchema = z.object({
+  name: z.string(),
+  password: z.string()
 });
 
 app.get("/", async (req, res) => {
@@ -226,6 +238,41 @@ app.delete("/donate", validateRequest(idOrNameSchema), async (req, res) => {
     console.log(`Kidney donation successful for patient "${patient.name}"`);
   } catch (error) {
     console.error("Error donating kidney:", error);
+    res.status(500).send("Internal server error");
+  }
+});
+
+app.post("/doctor-login", validateRequest(doctorSchema), async (req, res) => {
+  try {
+    const { name, password } = req.body;
+
+    if (!await doctorExists(name, password)) {
+      return res.status(404).send("Doctor not found");
+    }
+
+    const token = jwt.sign({ name }, secret);
+    return res.json({ token });
+  } catch (error) {
+    console.error("Error authorizing doctor:", error);
+    res.status(500).send("Internal server error");
+  }
+});
+
+app.get("/doctor", async (req, res) => {
+  const token = req.headers.authorization;
+
+  if (!token) {
+    return res.status(401).send("Unauthorized");
+  }
+
+  try {
+    const decoded = jwt.verify(token, secret);
+    if (decoded) {
+      const data = await readJsonFile("./patient.json");
+      res.json(data);
+    }
+  } catch (error) {
+    console.error("Error fetching doctor data:", error);
     res.status(500).send("Internal server error");
   }
 });
